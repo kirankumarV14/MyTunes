@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#121212">
+  <meta name="description" content="High fidelity Spotify & Samsung One UI style music streaming PWA with zero-latency background audio.">
+  <title>MyTunes</title>
+  <link rel="icon" href=Music_logo.png>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=4.0.0">
+  <script>
+    // Force Service Worker to update and never stick to stale cache
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        for (let r of regs) { r.update(); }
+      });
+    }
+  </script>
+</head>
+<body>
+
+  <!-- Single Persistent Audio Element for Zero-Latency Mobile Playback (Never recreate dynamically) -->
+  <audio id="persistent-audio" preload="auto"></audio>
+
+  <!-- Interactive Feedback Toast -->
+  <div id="actionToast" class="action-toast">
+    <span class="material-symbols-outlined">check_circle</span>
+    <span id="toastMessage">Action completed</span>
+  </div>
+
+  <div id="app-container">
+    
+    <!-- Top Sticky Header -->
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="header-top-row">
+          <div class="brand-wrapper">
+            <div class="app-logo">
+              <span class="material-symbols-outlined">graphic_eq</span>
+            </div>
+            <span class="brand-title">MyTunes</span>
+            <span class="connection-pill">
+              <span class="connection-dot"></span>
+              <span id="onlineStatusText">Online</span>
+            </span>
+          </div>
+          <div class="header-actions">
+            <button class="icon-btn" id="castBtn" title="Google Cast / One UI Output">
+              <span class="material-symbols-outlined">cast</span>
+            </button>
+            <div class="user-avatar-btn" title="Profile">
+              <span class="material-symbols-outlined" style="font-size: 18px;">person</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Global Search Bar in Header -->
+        <div class="header-search-bar" id="headerSearchBar">
+          <span class="material-symbols-outlined search-icon">search</span>
+          <input type="text" id="globalSearchInput" placeholder="What do you want to play?" autocomplete="off">
+          <button class="clear-search-btn" id="clearSearchBtn" title="Clear">
+            <span class="material-symbols-outlined" style="font-size: 18px;">close</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Viewport for Tab Views -->
+    <main class="main-viewport">
+      
+      <!-- TAB 1: HOME VIEW -->
+      <div id="home-view" class="tab-view active">
+        
+        <!-- Greeting Header -->
+        <div class="home-section" style="margin-top: 4px; margin-bottom: 20px;">
+          <span style="font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.08em;">Welcome to</span>
+          <h2 style="font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px;">The World of Music</h2>
+        </div>
+
+        <!-- Section 1: Quick Play (2-Column One UI Grid) -->
+        <section class="home-section">
+          <div class="section-header">
+            <h3 class="section-title">Jump Back In</h3>
+            
+          </div>
+          <div class="quick-play-grid" id="quickPlayGrid">
+            <!-- Rendered by app.js -->
+          </div>
+        </section>
+
+        <!-- Section 2: Tamil Hits & New Releases (Horizontal Rail) -->
+        <section class="home-section">
+          <div class="section-header">
+            <div>
+              <h3 class="section-title">Tamil Hits &amp; New Releases</h3>
+              <p class="section-subtitle">Handpicked for you...</p>
+            </div>
+            <button class="section-action" data-query="Tamil Blockbusters">
+              See all
+              <span class="material-symbols-outlined" style="font-size: 16px;">chevron_right</span>
+            </button>
+          </div>
+          <div class="horizontal-rail" id="releasesRail">
+            <!-- Rendered by ui.js -->
+          </div>
+        </section>
+
+        <!-- Section 3: 🌟 Sai Abhyankkar Specials -->
+        <section class="home-section" id="section-sai">
+          <div class="section-header">
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="material-symbols-outlined" style="color: var(--primary); font-size: 20px;">auto_awesome</span>
+                <h3 class="section-title">🌟 Sai Abhyankkar Specials</h3>
+              </div>
+              <p class="section-subtitle">Viral Hits &amp; Grooves</p>
+            </div>
+            <button class="section-action" data-query="Sai Abhyankkar">
+              See all
+              <span class="material-symbols-outlined" style="font-size: 16px;">chevron_right</span>
+            </button>
+          </div>
+          <div class="horizontal-rail" id="saiRail">
+            <!-- Rendered by ui.js -->
+          </div>
+        </section>
+
+        <!-- Section 4: Thalapathy Vijay Hits -->
+        <section class="home-section" id="section-vijay">
+          <div class="section-header">
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="material-symbols-outlined" style="color: var(--primary); font-size: 20px;">star</span>
+                <h3 class="section-title">Thalapathy Vijay Hits</h3>
+              </div>
+              <p class="section-subtitle">Blockbuster tracks &amp; mass beats</p>
+            </div>
+            <button class="section-action" data-query="Vijay Tamil Hits">
+              See all
+              <span class="material-symbols-outlined" style="font-size: 16px;">chevron_right</span>
+            </button>
+          </div>
+          <div class="horizontal-rail" id="vijayRail">
+            <!-- Rendered by ui.js -->
+          </div>
+        </section>
+
+        <!-- Section 5: Anirudh Beats -->
+        <section class="home-section" id="section-anirudh">
+          <div class="section-header">
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="material-symbols-outlined" style="color: var(--primary); font-size: 20px;">equalizer</span>
+                <h3 class="section-title">Anirudh Beats</h3>
+              </div>
+              <p class="section-subtitle">High octane chartbusters</p>
+            </div>
+            <button class="section-action" data-query="Anirudh Ravichander Hits">
+              See all
+              <span class="material-symbols-outlined" style="font-size: 16px;">chevron_right</span>
+            </button>
+          </div>
+          <div class="horizontal-rail" id="anirudhRail">
+            <!-- Rendered by ui.js -->
+          </div>
+        </section>
+
+        <!-- Section 6: 🎵 A.R. Rahman Specials -->
+        <section class="home-section" id="section-ar-rahman">
+          <div class="section-header">
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="material-symbols-outlined" style="color: var(--primary); font-size: 20px;">piano</span>
+                <h3 class="section-title">🎵 A.R. Rahman Specials</h3>
+              </div>
+              <p class="section-subtitle">Timeless Melodies &amp; Oscar Classics</p>
+            </div>
+            <button class="section-action" data-query="A.R. Rahman Hits">
+              See all
+              <span class="material-symbols-outlined" style="font-size: 16px;">chevron_right</span>
+            </button>
+          </div>
+          <div class="horizontal-rail" id="rahmanRail">
+            <!-- Rendered by ui.js -->
+          </div>
+        </section>
+
+        <!-- Section 7: Trending Searches / Hot Songs -->
+        <section class="home-section">
+          <div class="section-header">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="material-symbols-outlined" style="color: var(--primary); font-size: 20px;">trending_up</span>
+              <h3 class="section-title">Trending Now</h3>
+            </div>
+            <span class="bitrate-badge" style="padding: 3px 8px;">UPDATED HOURLY</span>
+          </div>
+          <div class="track-list" id="homeTrendingList">
+            <!-- Rendered by ui.js -->
+          </div>
+        </section>
+        <div class="scroll-bottom-spacer"></div>
+      </div>
+
+      <!-- TAB 2: SEARCH VIEW -->
+      <div id="search-view" class="tab-view">
+        <div class="home-section">
+          <div class="section-header">
+            <h3 class="section-title" id="searchResultsHeader">Browse All</h3>
+            <span id="searchResultCount" class="section-subtitle"></span>
+          </div>
+          <div id="searchStateView" class="search-state-view">
+            <span class="material-symbols-outlined">manage_search</span>
+            <h4 class="search-state-title">Search Tamil &amp; International Hits</h4>
+            <p class="search-state-desc">Type an artist, song title, or movie album above to stream in high bitrate AAC audio.</p>
+          </div>
+          <div class="track-list" id="searchResultsList" style="display: none;">
+            <!-- Live Results Rendered by app.js -->
+          </div>
+        </div>
+        <div class="scroll-bottom-spacer"></div>
+      </div>
+
+      <!-- TAB 3: LIBRARY VIEW -->
+      <div id="library-view" class="tab-view">
+        
+        <!-- Liked Songs Hero Banner -->
+        <div class="library-hero-banner" id="likedSongsBanner">
+          <div class="library-hero-glow"></div>
+          <div class="library-hero-left">
+            <div class="library-hero-icon">
+              <span class="material-symbols-outlined fill-1">favorite</span>
+            </div>
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <h3 class="library-hero-title">Liked Songs</h3>
+                <span class="material-symbols-outlined fill-1" style="font-size: 16px; color: var(--primary);">push_pin</span>
+              </div>
+              <p class="library-hero-subtitle" id="likedCountSubtitle">0 songs • Auto-synced offline</p>
+            </div>
+          </div>
+          <button class="library-hero-play" id="playLikedSongsBtn" title="Play Liked Songs">
+            <span class="material-symbols-outlined fill-1">play_arrow</span>
+          </button>
+        </div>
+
+        <!-- PWA Offline & Storage Health Gauge Bar -->
+        <div class="storage-card">
+          <div class="storage-header">
+            <div class="storage-title">
+              <span class="material-symbols-outlined" style="color: var(--primary);">offline_pin</span>
+              <span>PWA Device Storage</span>
+            </div>
+            <span class="storage-badge" id="storageBadge">Active PWA</span>
+          </div>
+          <div class="storage-progress-rail">
+            <div class="storage-progress-fill" id="storageProgressFill" style="width: 35%;"></div>
+          </div>
+          <div class="storage-footer">
+            <span id="storageTrackCount">Instant Cache Ready</span>
+            <button id="syncStorageBtn">
+              <span class="material-symbols-outlined" style="font-size: 14px;">sync</span>
+              Sync cache
+            </button>
+          </div>
+        </div>
+
+        <!-- Custom Playlists Section Header -->
+        <div class="section-header" style="margin-top: 10px; margin-bottom: 8px;">
+          <div>
+            <h3 class="section-title">Your Playlists</h3>
+            <span class="section-subtitle" id="playlistSortLabel">Sorted by recent</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button class="icon-btn" id="toggleLayoutBtn" title="Toggle List/Grid" style="width: 34px; height: 34px; background: var(--surface-2);">
+              <span class="material-symbols-outlined" id="layoutIcon" style="font-size: 18px;">grid_view</span>
+            </button>
+            <button class="filter-chip active" id="openNewPlaylistModalBtn" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+              <span class="material-symbols-outlined" style="font-size: 16px;">add</span>
+              Playlist
+            </button>
+          </div>
+        </div>
+
+        <!-- Playlists List / Grid Container -->
+        <div class="playlists-grid" id="playlistsContainer">
+          <!-- Rendered by app.js -->
+        </div>
+
+        <!-- Liked Songs Section: Always visible directly below Your Playlists -->
+        <div class="home-section" id="likedSongsSection" style="margin-top: 24px;">
+          <div class="section-header">
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="material-symbols-outlined fill-1" style="color: var(--primary); font-size: 20px;">favorite</span>
+                <h3 class="section-title">Liked Songs</h3>
+              </div>
+              <p class="section-subtitle" id="likedSectionCountSubtitle">0 tracks saved</p>
+            </div>
+            <button class="section-action" id="likedSectionPlayBtn" style="display: flex; align-items: center; gap: 4px;">
+              <span class="material-symbols-outlined fill-1" style="font-size: 16px; color: var(--primary);">play_arrow</span>
+              Play All
+            </button>
+          </div>
+          <div class="track-list" id="likedTracksList">
+            <!-- Rendered by ui.js -->
+          </div>
+        </div>
+        <div class="scroll-bottom-spacer"></div>
+
+      </div>
+
+    </main>
+
+    <!-- Bottom Persistent Mini-Player (Floats above bottom nav when track is active) -->
+    <div class="mini-player" id="miniPlayer">
+      <div class="mini-progress-bar">
+        <div class="mini-progress-fill" id="miniProgressFill"></div>
+      </div>
+      <div class="mini-player-content" id="miniPlayerTrigger">
+        <div class="mini-left">
+          <img class="mini-thumb" id="miniThumb" src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100" alt="Album Art" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500';">
+          <div class="mini-info">
+            <span class="mini-title" id="miniTitle">Select a track to play</span>
+            <span class="mini-artist" id="miniArtist">Vibe Music</span>
+          </div>
+        </div>
+        <div class="mini-controls" onclick="event.stopPropagation()">
+          <button class="icon-btn like-btn" id="miniLikeBtn" title="Favorite">
+            <span class="material-symbols-outlined" style="font-size: 20px;">favorite</span>
+          </button>
+          <button class="icon-btn" id="miniNextBtn" title="Next Track">
+            <span class="material-symbols-outlined" style="font-size: 22px;">skip_next</span>
+          </button>
+          <button class="mini-play-btn" id="miniPlayPauseBtn" title="Play/Pause">
+            <span class="material-symbols-outlined" id="miniPlayIcon">play_arrow</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation Bar (Home, Search, Library) -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-tab="home" id="navHome">
+        <span class="material-symbols-outlined">home</span>
+        <span class="nav-label">Home</span>
+      </button>
+      <button class="nav-item" data-tab="search" id="navSearch">
+        <span class="material-symbols-outlined">search</span>
+        <span class="nav-label">Search</span>
+      </button>
+      <button class="nav-item" data-tab="library" id="navLibrary">
+        <span class="material-symbols-outlined">local_library</span>
+        <span class="nav-label">Your Library</span>
+      </button>
+    </nav>
+
+    <!-- Fullscreen Now Playing Overlay Sheet -->
+    <div class="now-playing-modal" id="nowPlayingModal">
+      
+      <!-- Top Context Bar -->
+      <div class="player-top-bar">
+        <button class="icon-btn" id="collapsePlayerBtn" title="Collapse">
+          <span class="material-symbols-outlined" style="font-size: 28px;">keyboard_arrow_down</span>
+        </button>
+        <div class="player-top-title">
+          <span id="playerContextSubtitle">PLAYING FROM VIBE</span>
+          <span id="playerContextTitle">Current Queue</span>
+        </div>
+        <div style="display: flex; align-items: center;">
+          <button class="icon-btn" id="shareSongBtn" title="Share Song">
+            <span class="material-symbols-outlined" style="font-size: 20px;">share</span>
+          </button>
+          <button class="icon-btn" id="nowPlayingMenuBtn" title="More Options">
+            <span class="material-symbols-outlined" style="font-size: 20px;">more_vert</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Centerpiece: Large Glowing Album Art -->
+      <div class="artwork-stage">
+        <div class="artwork-glow" id="artworkGlow"></div>
+        <img class="artwork-image" id="playerArtwork" src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600" alt="Album Cover" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500';">
+      </div>
+
+      <!-- Track Meta & Like Row -->
+      <div class="player-meta-row">
+        <div class="player-meta-text">
+          <h2 class="player-track-title" id="playerTitle">Select a track</h2>
+          <p class="player-track-artist" id="playerArtist">Artists • Album</p>
+        </div>
+        <button class="player-heart-btn like-btn" id="playerHeartBtn" title="Like Song">
+          <span class="material-symbols-outlined" style="font-size: 28px;">favorite</span>
+        </button>
+      </div>
+
+      <!-- Audio Scrubber -->
+      <div class="scrubber-container">
+        <div class="scrubber-rail" id="scrubberRail">
+          <div class="scrubber-track">
+            <div class="scrubber-fill" id="scrubberFill"></div>
+          </div>
+          <div class="scrubber-thumb" id="scrubberThumb"></div>
+        </div>
+        <div class="scrubber-timestamps">
+          <span id="timeElapsed">0:00</span>
+          <span id="timeRemaining">-0:00</span>
+        </div>
+      </div>
+
+      <!-- Reachability Playback Controls Stage -->
+      <div class="playback-controls-row">
+        <button class="control-btn" id="shuffleBtn" title="Shuffle Toggle">
+          <span class="material-symbols-outlined" style="font-size: 26px;">shuffle</span>
+        </button>
+        <button class="control-btn" id="prevTrackBtn" title="Previous Track">
+          <span class="material-symbols-outlined" style="font-size: 38px;">skip_previous</span>
+        </button>
+        <button class="giant-play-btn" id="giantPlayPauseBtn" title="Play/Pause">
+          <span class="material-symbols-outlined fill-1" id="giantPlayIcon">play_arrow</span>
+        </button>
+        <button class="control-btn" id="nextTrackBtn" title="Next Track">
+          <span class="material-symbols-outlined" style="font-size: 38px;">skip_next</span>
+        </button>
+        <button class="control-btn" id="repeatBtn" title="Repeat Mode">
+          <span class="material-symbols-outlined" style="font-size: 26px;">repeat</span>
+        </button>
+      </div>
+
+      <!-- Audio Output & Queue Info Row -->
+      <div class="player-bottom-info">
+        <button class="device-connect-pill" id="deviceOutputPill" title="Audio Output Device">
+          <span class="material-symbols-outlined">headphones</span>
+          <span>Samsung Audio</span>
+        </button>
+        <button class="queue-open-btn" id="openQueueBtn" title="View Queue">
+          <span class="material-symbols-outlined" style="font-size: 20px;">queue_music</span>
+          <span id="queueCountBadge">0</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Up Next Queue Drawer Backdrop & Sheet Modal -->
+    <div class="queue-drawer-backdrop" id="queueBackdrop"></div>
+    <div class="queue-drawer" id="queueDrawer">
+      <div class="drawer-grab-handle" id="drawerGrabHandle"></div>
+      
+      <div class="drawer-header">
+        <div class="drawer-title-group">
+          <h3>Playback Queue</h3>
+          <span id="queueSummarySubtitle">0 Tracks • Auto-managed</span>
+        </div>
+        <button class="drawer-clear-btn" id="clearQueueBtn" title="Clear Up Next">
+          <span class="material-symbols-outlined" style="font-size: 18px;">clear_all</span>
+          <span>Clear</span>
+        </button>
+      </div>
+
+      <!-- Queue Settings Row: Shuffle & Autoplay -->
+      <div class="queue-options-row">
+        <button class="queue-shuffle-toggle" id="queueShuffleToggle">
+          <span class="material-symbols-outlined" style="font-size: 18px;">shuffle</span>
+          <span>Shuffle Queue</span>
+        </button>
+        <div class="autoplay-toggle-wrapper">
+          <span>Autoplay</span>
+          <button class="one-ui-switch active" id="autoplaySwitch" role="switch" aria-checked="true">
+            <span class="one-ui-knob"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Currently Playing Item Card -->
+      <div style="margin-bottom: 6px;">
+        <span style="font-size: 10px; font-weight: 800; color: var(--primary); text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 4px;">Now Playing</span>
+        <div class="queue-current-card" id="queueCurrentCard">
+          <div class="track-left">
+            <div class="track-thumb-wrapper">
+              <img class="track-thumb" id="queueCurrentThumb" src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100" alt="Current Artwork" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500';">
+            </div>
+            <div class="track-info">
+              <span class="track-title" id="queueCurrentTitle" style="color: var(--primary);">No track loaded</span>
+              <span class="track-subtitle" id="queueCurrentArtist">Choose a song</span>
+            </div>
+          </div>
+          <div class="track-equalizer" id="queueEqualizer">
+            <span class="eq-bar"></span>
+            <span class="eq-bar"></span>
+            <span class="eq-bar"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Next In Queue Title -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px; margin-bottom: 8px;">
+        <span style="font-size: 13px; font-weight: 700; color: var(--text-high);">Next In Queue</span>
+        <span style="font-size: 11px; color: var(--text-medium);">Tap to play next</span>
+      </div>
+
+      <!-- Queue List -->
+      <div class="queue-scroll-list" id="queueList">
+        <!-- Rendered by app.js -->
+      </div>
+
+      <!-- Bottom Drawer Close Button -->
+      <div style="display: flex; justify-content: flex-end; padding-top: 8px;">
+        <button class="filter-chip" id="closeDrawerBtn" style="padding: 6px 18px; font-size: 13px;">
+          Close
+        </button>
+      </div>
+    </div>
+
+    <!-- Create Custom Playlist Dialog Modal -->
+    <div class="playlist-modal-backdrop" id="newPlaylistModal">
+      <div class="playlist-dialog">
+        <h3>Create Playlist</h3>
+        <input type="text" id="newPlaylistNameInput" placeholder="Give your playlist a name" maxlength="40">
+        <div class="playlist-dialog-actions">
+          <button class="dialog-btn-cancel" id="cancelPlaylistModalBtn">Cancel</button>
+          <button class="dialog-btn-save" id="savePlaylistModalBtn">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rename Custom Playlist Dialog Modal -->
+    <div class="playlist-modal-backdrop" id="renamePlaylistModal">
+      <div class="playlist-dialog">
+        <h3>Rename Playlist</h3>
+        <p class="playlist-dialog-subtitle">Enter a new name for your playlist</p>
+        <input type="text" id="renamePlaylistNameInput" placeholder="Enter playlist name" maxlength="40" autocomplete="off" autocorrect="off" spellcheck="false">
+        <div class="playlist-dialog-actions">
+          <button class="dialog-btn-cancel" id="cancelRenamePlaylistModalBtn">Cancel</button>
+          <button class="dialog-btn-save" id="saveRenamePlaylistModalBtn">
+            <span class="material-symbols-outlined" style="font-size: 16px;">check</span>
+            <span>Save</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Real Dedicated Playlist Detail Container Modal -->
+    <div id="playlistDetailModal" class="playlist-detail-modal"></div>
+
+    <!-- Song Context Menu Modal (Add to Playlist / Queue) -->
+    <div id="songContextModal" class="playlist-modal-backdrop"></div>
+
+    <!-- Dedicated Initial App Loading Screen -->
+    <div id="appLoadingScreen" class="app-loading-screen">
+      <div class="loading-content">
+        <div class="loading-logo-wrapper">
+          <span class="material-symbols-outlined loading-eq-icon">graphic_eq</span>
+        </div>
+        <h1 class="loading-brand-title">MyTunes</h1>
+        <p class="loading-subtitle">Pure Music • High Fidelity</p>
+        <div class="loading-progress-track">
+          <div class="loading-progress-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Network / Offline Error Screen -->
+    <div id="appErrorScreen" class="app-error-screen" style="display: none;">
+      <div class="error-content">
+        <div class="error-icon-wrapper">
+          <span class="material-symbols-outlined error-icon">wifi_off</span>
+        </div>
+        <h2 class="error-title">No Internet Connection</h2>
+        <p class="error-desc">You are currently offline. Please check your Wi-Fi or mobile data connection to discover new songs.</p>
+        <div class="error-actions">
+          <button class="error-retry-btn" id="errorRetryBtn">
+            <span class="material-symbols-outlined" style="font-size: 18px;">refresh</span>
+            <span>Retry Connection</span>
+          </button>
+          <button class="error-library-btn" id="errorGoLibraryBtn">
+            <span class="material-symbols-outlined" style="font-size: 18px;">library_music</span>
+            <span>Listen to Liked Songs</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="js/app.js?v=4.2.0"></script>
+</body>
+</html>
