@@ -547,6 +547,10 @@ class AudioEngine {
   async loadAndPlay(track, addToHistory = true) {
     if (!track) return;
 
+    if (!state.queueCycle || state.queueCycle.length === 0) {
+      state.queueCycle = [track];
+    }
+
     if (addToHistory && state.currentTrack && state.currentTrack.id !== track.id) {
       state.addToHistory(state.currentTrack);
     }

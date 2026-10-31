@@ -10,6 +10,7 @@ class StateManager {
   constructor() {
     this.currentTrack = null;
     this.queue = [];
+    this.queueCycle = [];
     this.originalQueue = [];
     this.history = this.loadHistory();
     this.isPlaying = false;
@@ -227,6 +228,58 @@ class StateManager {
       this.history.pop();
     }
     this.saveHistory();
+  }
+
+  // --- QUEUE & ENDLESS CYCLE MANAGEMENT ---
+  setQueue(trackList, startIndex = 0) {
+    if (!Array.isArray(trackList) || trackList.length === 0) {
+      this.queue = [];
+      this.queueCycle = [];
+      this.originalQueue = [];
+      return;
+    }
+    const idx = Math.max(0, Math.min(startIndex, trackList.length - 1));
+    const current = trackList[idx];
+    const upNext = [...trackList.slice(idx + 1), ...trackList.slice(0, idx)];
+    this.queue = upNext;
+    this.queueCycle = [current, ...upNext];
+    this.originalQueue = [...this.queue];
+  }
+
+  addToQueue(track) {
+    if (!track || !track.id) return;
+    this.queue.push(track);
+    if (this.queueCycle.length > 0) {
+      this.queueCycle.push(track);
+    } else {
+      this.queueCycle = this.currentTrack ? [this.currentTrack, track] : [track];
+    }
+  }
+
+  playNextTrack(track) {
+    if (!track || !track.id) return;
+    this.queue.unshift(track);
+    if (this.queueCycle.length > 0) {
+      this.queueCycle.splice(1, 0, track);
+    } else {
+      this.queueCycle = this.currentTrack ? [this.currentTrack, track] : [track];
+    }
+  }
+
+  removeFromQueue(index) {
+    if (index < 0 || index >= this.queue.length) return null;
+    const removed = this.queue.splice(index, 1)[0];
+    if (removed && this.queueCycle.length > 0) {
+      const cIdx = this.queueCycle.findIndex(t => t.id === removed.id);
+      if (cIdx >= 0) this.queueCycle.splice(cIdx, 1);
+    }
+    return removed;
+  }
+
+  clearQueue() {
+    this.queue = [];
+    this.queueCycle = [];
+    this.originalQueue = [];
   }
 }
 

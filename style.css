@@ -1588,38 +1588,14 @@ body {
   font-size: 38px;
 }
 
-/* Device Pill & Queue Open Row (Balanced Samsung One UI layout) */
+/* Queue Open Row (Balanced Samsung One UI layout) */
 .player-bottom-info {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-top: 14px;
   margin-bottom: 8px;
   padding: 0 4px;
-}
-
-.device-connect-pill {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 16px;
-  border-radius: 9999px;
-  background: var(--surface-2);
-  color: var(--primary);
-  font-size: 13px;
-  font-weight: 600;
-  border: 1px solid var(--border-subtle);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.device-connect-pill:active {
-  transform: scale(0.96);
-  background: var(--surface-3);
-}
-
-.device-connect-pill .material-symbols-outlined {
-  font-size: 18px;
 }
 
 .queue-open-btn {
