@@ -552,7 +552,7 @@ export function openPlaylistDetailModal(playlistId) {
     playAllBtn.onclick = () => {
       const tracksToPlay = pl.isLikedCollection ? state.likedSongs : pl.tracks;
       if (tracksToPlay && tracksToPlay.length > 0) {
-        state.queue = [...tracksToPlay.slice(1)];
+        state.setQueue(tracksToPlay, 0);
         engine.loadAndPlay(tracksToPlay[0]);
         engine.resolveUpcomingQueue();
         showToast(`Playing "${pl.name}"`);
@@ -737,8 +737,7 @@ export function openPlaylistDetailModal(playlistId) {
         // Play song on row click
         row.onclick = (e) => {
           if (e.target.closest('.icon-btn')) return;
-          const remaining = tracksList.slice(idx + 1);
-          state.queue = [...remaining];
+          state.setQueue(tracksList, idx);
           engine.loadAndPlay(track);
           engine.resolveUpcomingQueue();
         };

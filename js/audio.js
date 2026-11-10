@@ -42,12 +42,11 @@ class AudioEngine {
     this.isResurrecting = false;
     this.isResolvingQueue = false;
     this.isTransitioning = false;
+    this.lookaheadTriggeredForTrack = false;
     this.wakeLock = null;
     this.releaseWebLock = null;
     this.audioCtx = null;
     this.keepAliveNode = null;
-    this.blobUrlCache = new Map();
-    this.lastPlayedBlobTrackId = null;
 
     this.uiCallbacks = {
       onPlaybackChange: () => {},
@@ -151,39 +150,12 @@ class AudioEngine {
   }
 
   /**
-   * Pre-download audio bytes into local RAM Blob while network is active.
-   * This is the definitive fix for Android "Optimized" battery mode:
-   * When Android Doze mode blocks background network after 6-8 minutes,
-   * upcoming songs play directly from local RAM with zero network traffic!
+   * Resolve best playable stream URL from in-memory cache or song object
+   * Uses direct Akamai/Cloudflare CDN stream URLs with native HTTP Range support
    */
-  async prebufferTrackBlob(track) {
-    if (!track || !track.id) return null;
-    if (this.blobUrlCache.has(track.id)) {
-      return this.blobUrlCache.get(track.id);
-    }
-    const streamUrl = getBestStreamUrl(track);
-    if (!streamUrl) return null;
-
-    try {
-      const res = await fetch(streamUrl);
-      if (res.ok) {
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        this.blobUrlCache.set(track.id, blobUrl);
-        return blobUrl;
-      }
-    } catch (e) {
-      // Graceful fallback to streaming URL
-    }
-    return null;
-  }
-
   getPlayableUrl(track) {
     if (!track || !track.id) return null;
-    if (this.blobUrlCache.has(track.id)) {
-      return this.blobUrlCache.get(track.id);
-    }
-    return getBestStreamUrl(track);
+    return getBestStreamUrl(track) || streamUrlCache.get(track.id) || null;
   }
 
   /**
@@ -366,6 +338,10 @@ class AudioEngine {
     });
 
     this.audio.addEventListener('pause', () => {
+      // Ignore internal pause events while switching audio.src during track transition
+      if (this.isTransitioning) {
+        return;
+      }
       // If paused without user action, external app (YouTube, phone call) took audio focus
       if (!this.userExplicitlyPaused && (state.isPlaying || state.currentTrack)) {
         this.wasInterruptedBySystem = true;
@@ -390,7 +366,8 @@ class AudioEngine {
       this.updateMediaSessionPosition(cur, dur);
 
       // 1. Proactive Lookahead: Ensure upcoming tracks are resolved in advance
-      if (dur > 0 && (dur - cur) <= 45) {
+      if (dur > 0 && (dur - cur) <= 45 && !this.lookaheadTriggeredForTrack) {
+        this.lookaheadTriggeredForTrack = true;
         this.resolveUpcomingQueue();
       }
 
@@ -413,15 +390,18 @@ class AudioEngine {
 
     this.audio.addEventListener('error', (e) => {
       console.warn('Audio playback error encountered:', e);
-      if (this.audio.paused || this.wasInterruptedBySystem) {
-        // Network connection timed out while paused in background; do NOT advance/skip track!
-        // It will be smoothly resurrected when user taps play or returns.
+      if (this.userExplicitlyPaused) {
         return;
       }
-      if (state.queue.length > 0 && !this.isTransitioning) {
-        this.isTransitioning = true;
-        this.uiCallbacks.onToast('Advancing to next track...');
-        this.handleTrackTransition();
+      if (state.currentTrack && !this.isResurrecting) {
+        console.log('Attempting auto-resurrection on playback error...');
+        this.resurrectAndResume().catch(() => {
+          if (state.queue.length > 0 && !this.isTransitioning) {
+            this.isTransitioning = true;
+            this.uiCallbacks.onToast('Advancing to next track...');
+            this.handleTrackTransition();
+          }
+        });
       }
     });
   }
@@ -555,19 +535,11 @@ class AudioEngine {
       state.addToHistory(state.currentTrack);
     }
 
-    // Revoke old blob to keep memory minimal
-    if (this.lastPlayedBlobTrackId && this.lastPlayedBlobTrackId !== track.id) {
-      if (this.blobUrlCache.has(this.lastPlayedBlobTrackId)) {
-        URL.revokeObjectURL(this.blobUrlCache.get(this.lastPlayedBlobTrackId));
-        this.blobUrlCache.delete(this.lastPlayedBlobTrackId);
-      }
-    }
-    this.lastPlayedBlobTrackId = track.id;
-
     state.currentTrack = track;
     this.userExplicitlyPaused = false;
     this.wasInterruptedBySystem = false;
     this.isTransitioning = false;
+    this.lookaheadTriggeredForTrack = false;
     this.stopNotificationHeartbeat();
 
     // 1. Check in-memory stream cache or local Blob first
@@ -715,48 +687,36 @@ class AudioEngine {
   }
 
   /**
-   * Parallel Lookahead Queue Pre-Resolver & Blob Pre-Bufferer
-   * Resolves direct CDN stream URLs for the upcoming 5 tracks in parallel.
-   * Pre-downloads the audio binary as local Blobs for the immediate next 2 tracks.
-   * This completely defeats Android Doze mode on "Optimized" battery settings!
+   * Sequential Lookahead Queue Pre-Resolver
+   * Proactively resolves direct 320k/160k CDN stream URLs for upcoming tracks in memory.
+   * Resolving sequentially prevents Cloudflare Worker concurrency throttling & timeout aborts,
+   * guaranteeing that every upcoming song is 100% cached before its turn!
    */
   async resolveUpcomingQueue() {
     if (this.isResolvingQueue) return;
     this.isResolvingQueue = true;
 
     try {
-      // PRIORITY 1: Pre-resolve direct stream URLs for the upcoming 5 tracks in queue in parallel!
-      const upcoming = state.queue.slice(0, 5);
-      const resolvePromises = upcoming.map(async (track) => {
-        if (!track || !track.id) return;
-        let url = getBestStreamUrl(track);
+      // Look ahead up to 8 tracks in queue
+      const upcoming = state.queue.slice(0, 8);
+      for (const track of upcoming) {
+        if (!track || !track.id) continue;
+        let url = getBestStreamUrl(track) || streamUrlCache.get(track.id);
         if (!url) {
           try {
             const full = await fetchSongDetails(track.id);
             if (full) {
               Object.assign(track, full);
-              url = getBestStreamUrl(track);
+              getBestStreamUrl(track);
             }
           } catch (e) {
             console.warn(`Failed pre-resolving track ${track.id}:`, e);
           }
         }
-      });
-
-      await Promise.allSettled(resolvePromises);
-
-      // PRIORITY 2: Pre-buffer audio data as local Blobs for the immediate next 2 tracks!
-      // When Android Doze mode shuts down background network after 6-8 minutes,
-      // these tracks play 100% locally from device RAM without touching the internet!
-      const immediateNext = state.queue.slice(0, 2);
-      for (const t of immediateNext) {
-        if (t && t.id && !this.blobUrlCache.has(t.id)) {
-          this.prebufferTrackBlob(t); // runs asynchronously in background
-        }
       }
 
-      // PRIORITY 3: If queue is running low (<= 3 tracks) and autoplay is on, replenish recommendations
-      if (state.queue.length <= 3 && state.autoplay && state.currentTrack) {
+      // Autoplay replenishment when queue is low
+      if (state.queue.length <= 2 && state.autoplay && state.currentTrack && state.repeatMode !== 'all') {
         try {
           const suggestions = await fetchRecommendations(state.currentTrack);
           if (suggestions && suggestions.length > 0) {
@@ -767,15 +727,16 @@ class AudioEngine {
               state.queue.push(...fresh.slice(0, 10));
               this.uiCallbacks.onQueueChange();
 
-              // Pre-resolve fresh suggestions
+              // Pre-resolve first 3 suggestions
               const freshUpcoming = state.queue.slice(0, 3);
-              freshUpcoming.forEach(t => {
+              for (const t of freshUpcoming) {
                 if (t && t.id && !getBestStreamUrl(t)) {
-                  fetchSongDetails(t.id).then(f => {
+                  try {
+                    const f = await fetchSongDetails(t.id);
                     if (f) Object.assign(t, f);
-                  }).catch(() => {});
+                  } catch (e) {}
                 }
-              });
+              }
             }
           }
         } catch (e) {
@@ -789,14 +750,25 @@ class AudioEngine {
 
   /**
    * Zero-Latency Synchronous Track Switch
-   * Synchronously assigns audio.src = streamUrl and calls audio.play()
+   * Synchronously assigns audio.src = streamUrl, re-arms with audio.load() and calls audio.play()
    * maintains the Android audio session with zero silence gap!
    */
   handleTrackTransition() {
     // Mode 1: Repeat One
     if (state.repeatMode === 'one' && state.currentTrack) {
       this.audio.currentTime = 0;
-      this.audio.play().catch(console.error);
+      const playPromise = this.audio.play();
+      if (playPromise) {
+        playPromise.then(() => {
+          this.isTransitioning = false;
+          state.isPlaying = true;
+          this.updateMediaPlaybackState();
+        }).catch(() => {
+          this.isTransitioning = false;
+        });
+      } else {
+        this.isTransitioning = false;
+      }
       return;
     }
 
@@ -806,8 +778,40 @@ class AudioEngine {
       this.uiCallbacks.onQueueChange();
     }
 
-    // If queue is empty, finish playback
+    // If queue is empty, handle autoplay recommendations
     if (state.queue.length === 0) {
+      if (state.autoplay && state.currentTrack) {
+        this.uiCallbacks.onToast('Autoplaying next vibes...');
+        fetchRecommendations(state.currentTrack).then(async (recommendations) => {
+          if (recommendations && recommendations.length > 0) {
+            const fresh = recommendations.filter(
+              s => s.id !== state.currentTrack?.id && !state.queue.some(q => q.id === s.id)
+            );
+            if (fresh.length > 0) {
+              state.queue.push(...fresh.slice(0, 10));
+              this.uiCallbacks.onQueueChange();
+              this.isTransitioning = false;
+              this.handleTrackTransition();
+              return;
+            }
+          }
+          this.isTransitioning = false;
+          state.isPlaying = false;
+          this.updateMediaPlaybackState();
+          this.uiCallbacks.onPlaybackChange();
+          this.releaseWakeLocks();
+          this.uiCallbacks.onToast('Queue finished');
+        }).catch(() => {
+          this.isTransitioning = false;
+          state.isPlaying = false;
+          this.updateMediaPlaybackState();
+          this.uiCallbacks.onPlaybackChange();
+          this.releaseWakeLocks();
+          this.uiCallbacks.onToast('Queue finished');
+        });
+        return;
+      }
+
       this.isTransitioning = false;
       state.isPlaying = false;
       this.updateMediaPlaybackState();
@@ -822,34 +826,40 @@ class AudioEngine {
     if (state.currentTrack) {
       state.addToHistory(state.currentTrack);
     }
-
-    // Revoke previous played Blob URL to conserve memory
-    if (this.lastPlayedBlobTrackId && this.lastPlayedBlobTrackId !== nextTrack.id) {
-      if (this.blobUrlCache.has(this.lastPlayedBlobTrackId)) {
-        URL.revokeObjectURL(this.blobUrlCache.get(this.lastPlayedBlobTrackId));
-        this.blobUrlCache.delete(this.lastPlayedBlobTrackId);
-      }
-    }
-    this.lastPlayedBlobTrackId = nextTrack.id;
     state.currentTrack = nextTrack;
 
-    // Check pre-resolved local Blob URL (or direct CDN stream URL)
+    // Check pre-resolved direct CDN stream URL
     const streamUrl = this.getPlayableUrl(nextTrack);
 
     if (streamUrl) {
-      // 100% SYNCHRONOUS assignment and play!
+      this.lookaheadTriggeredForTrack = false;
+      // 100% SYNCHRONOUS assignment and play on persistent audio element!
       this.audio.src = streamUrl;
+
+      const transitionWatchdog = setTimeout(() => {
+        if (this.isTransitioning) {
+          console.warn('Transition watchdog timeout, clearing isTransitioning');
+          this.isTransitioning = false;
+        }
+      }, 4000);
+
       const playPromise = this.audio.play();
       if (playPromise) {
         playPromise.then(() => {
+          clearTimeout(transitionWatchdog);
           this.isTransitioning = false;
           state.isPlaying = true;
           this.updateMediaPlaybackState();
           this.requestWakeLocks();
         }).catch(err => {
+          clearTimeout(transitionWatchdog);
           console.warn('Playback error on zero-latency track switch:', err);
           this.isTransitioning = false;
+          this.resurrectAndResume().catch(() => {});
         });
+      } else {
+        clearTimeout(transitionWatchdog);
+        this.isTransitioning = false;
       }
 
       this.updateMediaSession(nextTrack);
@@ -860,6 +870,7 @@ class AudioEngine {
       // Immediately kick off background lookahead for subsequent songs!
       this.resolveUpcomingQueue();
     } else {
+      this.lookaheadTriggeredForTrack = false;
       // Fallback: If not cached yet, load and play asynchronously
       this.loadAndPlay(nextTrack);
     }

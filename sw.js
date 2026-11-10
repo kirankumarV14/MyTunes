@@ -1,5 +1,5 @@
 // Service Worker for Vibe Music PWA (Samsung One UI / Spotify Dark)
-const CACHE_NAME = 'vibe-music-cache-v7-focus-recovery';
+const CACHE_NAME = 'vibe-music-cache-v9-spotify-continuous';
 const STATIC_ASSETS = [
   './',
   './index.html',

@@ -20,10 +20,10 @@ export async function apiFetch(endpoint) {
     return memoryCache.get(endpoint);
   }
 
-  // Attempt Primary API with 6-second timeout
+  // Attempt Primary API with 10-second timeout
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
     const res = await fetch(`${PRIMARY_API}${endpoint}`, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (res.ok) {
@@ -37,10 +37,10 @@ export async function apiFetch(endpoint) {
     console.warn(`Primary API call failed for ${endpoint}:`, err.message);
   }
 
-  // Fallback API attempt with 5-second timeout
+  // Fallback API attempt with 3-second timeout
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(`${FALLBACK_API}${endpoint}`, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (res.ok) {

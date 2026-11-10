@@ -340,8 +340,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Liked Songs Playback & Banner Action
   const playLikedSongs = () => {
     if (state.likedSongs.length > 0) {
-      state.queue = [...state.likedSongs.slice(1)];
+      state.setQueue(state.likedSongs, 0);
       engine.loadAndPlay(state.likedSongs[0]);
+      engine.resolveUpcomingQueue();
       showToast(`Playing Liked Songs (${state.likedSongs.length})`);
     } else {
       showToast('No liked songs yet. Tap the heart on any song to save it.');
